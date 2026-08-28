@@ -11,8 +11,9 @@ with a hard pre-sign spend ceiling.
 
 `@solana/pay-kit/client` currently exports only `createPayKitClient().fetch()`,
 which auto-pays and does not take those kwargs. This process refuses that
-facade. No live payment until `LIVE_PAY=1` and an injected `solana.charge`
-implementation (or an upstream export).
+facade. Inject `solana.charge` (or an upstream `solana.charge` export) so
+`runCharge` can pass `expectedNetwork` and `maxAmount`. `LIVE_PAY=1` is
+still required.
 
 Default network is `devnet`. Ceiling starts at `0` (refuse all spends).
 Mainnet requires `ALLOW_MAINNET=1`.

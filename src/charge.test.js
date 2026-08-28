@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createPayKitClient } from "@solana/pay-kit/client";
 import { USDC_DEVNET } from "./lib.js";
 import { beforeSign } from "./policy.js";
-import { chargeArgs, runCharge } from "./charge.js";
+import { chargeArgs, loadSolanaCharge, runCharge } from "./charge.js";
 
 const RECIPIENT = "11111111111111111111111111111111";
 function hdr() {
@@ -23,11 +23,16 @@ test("chargeArgs feeds beforeSign into solana.charge kwargs", () => {
 
 test("runCharge refuses live path and unrestricted fetch", async () => {
   await assert.rejects(runCharge([hdr()], policy, { env: { LIVE_PAY: "0" } }), /LIVE_PAY=0/);
-  const calls = [];
   await assert.rejects(
-    runCharge([hdr()], policy, { env: { LIVE_PAY: "1" }, rpcUrl: "https://example.invalid", signer: { pubkey: "x" } }),
+    runCharge([hdr()], policy, {
+      env: { LIVE_PAY: "1" },
+      rpcUrl: "https://example.invalid",
+      signer: { pubkey: "x" },
+      solanaCharge: { fetch: async () => {} },
+    }),
     /refuse createPayKitClient\(\)\.fetch/,
   );
+  const calls = [];
   const out = await runCharge([hdr()], policy, {
     env: { LIVE_PAY: "1" },
     rpcUrl: "https://example.invalid",
@@ -41,4 +46,12 @@ test("runCharge refuses live path and unrestricted fetch", async () => {
   assert.equal(calls[0].expectedNetwork, "devnet");
   assert.equal(calls[0].maxAmount, 10000n);
   assert.equal(out.method, "method");
+});
+
+test("loadSolanaCharge uses injected solana.charge and refuses today's client export", async () => {
+  const stub = (a) => a;
+  const loaded = await loadSolanaCharge({ solana: { charge: stub } });
+  assert.equal(loaded, stub);
+  assert.equal(typeof createPayKitClient, "function");
+  await assert.rejects(loadSolanaCharge(), /refuse createPayKitClient\(\)\.fetch/);
 });
