@@ -1,4 +1,4 @@
-import { home, init, loadPrincipal } from "./lib.js";
+import { home, init, loadPrincipal, loadPrincipalSigner } from "./lib.js";
 import { runCharge } from "./charge.js";
 import { beforeSign, policyFromPrincipal } from "./policy.js";
 
@@ -10,8 +10,8 @@ try {
     const p = await init(dir);
     console.log(`pubkey ${p.pubkey} ceiling 0`);
   } else if (cmd === "status") {
-    const p = await loadPrincipal(dir);
-    console.log(`pubkey ${p.pubkey} ceiling ${p.spend_ceiling_raw} network ${p.network}`);
+    const { principal: p, signer } = await loadPrincipalSigner(dir);
+    console.log(`pubkey ${signer.pubkey} ceiling ${p.spend_ceiling_raw} network ${p.network}`);
   } else if (cmd === "pick") {
     if (!rest.length) throw new Error("pick <WWW-Authenticate...>");
     const p = await loadPrincipal(dir);
@@ -27,14 +27,14 @@ try {
     );
   } else if (cmd === "charge") {
     if (!rest.length) throw new Error("charge <WWW-Authenticate...>");
-    const p = await loadPrincipal(dir);
+    const { principal: p, signer } = await loadPrincipalSigner(dir);
     const out = await runCharge(
       rest,
       policyFromPrincipal(p, {
         recipient: process.env.MPP_RECIPIENT || p.recipient,
         allowMainnet: process.env.ALLOW_MAINNET === "1",
       }),
-      { rpcUrl: process.env.SOLANA_RPC_URL, signer: { pubkey: p.pubkey } },
+      { rpcUrl: process.env.SOLANA_RPC_URL, signer: signer.signer },
     );
     console.log(`charged expectedNetwork ${out.args.expectedNetwork} maxAmount ${out.args.maxAmount}`);
   } else {

@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createPayKitClient } from "@solana/pay-kit/client";
-import { USDC_DEVNET } from "./lib.js";
+import { init, loadSigner, USDC_DEVNET } from "./lib.js";
 import { beforeSign } from "./policy.js";
 import { chargeArgs, loadSolanaCharge, runCharge } from "./charge.js";
 
@@ -54,4 +57,24 @@ test("loadSolanaCharge uses injected solana.charge and refuses today's client ex
   assert.equal(loaded, stub);
   assert.equal(typeof createPayKitClient, "function");
   await assert.rejects(loadSolanaCharge(), /refuse createPayKitClient\(\)\.fetch/);
+});
+
+test("runCharge receives the protocol signer loaded from the ignored file key", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "mpp-charge-test-"));
+  try {
+    await init(dir);
+    const signer = await loadSigner(dir);
+    const out = await runCharge([hdr()], policy, {
+      env: { LIVE_PAY: "1" },
+      rpcUrl: "https://example.invalid",
+      signer: signer.signer,
+      solanaCharge: (args) => {
+        assert.equal(args.signer, signer.signer);
+        return "method";
+      },
+    });
+    assert.equal(out.method, "method");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

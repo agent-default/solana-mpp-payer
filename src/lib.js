@@ -1,11 +1,13 @@
 import { generateKeyPairSync } from "node:crypto";
-import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { Signer } from "@solana/pay-kit";
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 export const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export const USDC_DEVNET = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 export const home = () => process.env.MPP_HOME || "data";
+export const keystorePath = (dir) => join(dir, "keystore", "id.json");
 export const mintFor = (network) =>
   network === "mainnet" || network === "mainnet-beta" ? USDC : USDC_DEVNET;
 
@@ -69,7 +71,7 @@ export async function init(dir) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const rawPub = publicKey.export({ type: "spki", format: "der" }).subarray(-32);
   const seed = privateKey.export({ type: "pkcs8", format: "der" }).subarray(-32);
-  const keyPath = join(dir, "keystore", "id.json");
+  const keyPath = keystorePath(dir);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await chmod(dir, 0o700);
   await mkdir(join(dir, "keystore"), { recursive: true, mode: 0o700 });
@@ -95,4 +97,28 @@ export async function loadPrincipal(dir) {
     if (e.code === "ENOENT") throw new Error(`missing ${path}; run init`);
     throw e;
   }
+}
+
+/** Load only the ignored local file key; never log or return its bytes. */
+export async function loadSigner(dir) {
+  const path = keystorePath(dir);
+  try {
+    const info = await stat(path);
+    if (!info.isFile()) throw new Error(`${path} must be a file; refuse signer`);
+    if ((info.mode & 0o777) !== 0o600) throw new Error(`${path} must be mode 0600; refuse signer`);
+    return await Signer.file(path);
+  } catch (e) {
+    if (e.code === "ENOENT") throw new Error(`missing ${path}; run init`);
+    throw e;
+  }
+}
+
+/** Bind the file key to the local principal before it can reach a charge path. */
+export async function loadPrincipalSigner(dir) {
+  const principal = await loadPrincipal(dir);
+  const signer = await loadSigner(dir);
+  if (signer.pubkey !== principal.pubkey) {
+    throw new Error("keystore pubkey does not match principal; refuse signer");
+  }
+  return { principal, signer };
 }
