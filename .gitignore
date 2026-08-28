@@ -5,6 +5,12 @@
 /memory/
 BRIEFING.md
 
+# Local operator notes. Never publish environment or account references.
+docs/OPERATIONS.md
+docs/OWNERSHIP-MAP.md
+docs/MEETING-ONE-PAGER.md
+docs/UPSTREAM-PAY-KIT-EXPORT-ISSUE.md
+
 # Local configuration and credentials.
 .env
 .env.*

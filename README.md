@@ -15,6 +15,8 @@ facade. Inject `solana.charge` (or an upstream `solana.charge` export) so
 `runCharge` can pass `expectedNetwork` and `maxAmount`. `LIVE_PAY=1` is
 still required.
 
+Tracking the required client export: [pay-kit#298](https://github.com/solana-foundation/pay-kit/issues/298).
+
 Default network is `devnet`. Ceiling starts at `0` (refuse all spends).
 Mainnet requires `ALLOW_MAINNET=1`.
 
