@@ -1,0 +1,25 @@
+{
+  "name": "solana-mpp-payer",
+  "private": true,
+  "type": "module",
+  "description": "A headless process that pays native MPP solana/charge from Solana USDC with a hard pre-sign spend ceiling.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agent-default/solana-mpp-payer.git"
+  },
+  "scripts": {
+    "check": "npm test",
+    "init": "node src/main.js init",
+    "status": "node src/main.js status",
+    "pick": "node src/main.js pick",
+    "charge": "node src/main.js charge",
+    "test": "node --test src/*.test.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@solana/kit": "^6.10.0",
+    "@solana/pay-kit": "^0.9.0",
+    "mppx": "^0.9.0"
+  }
+}

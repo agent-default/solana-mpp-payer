@@ -1,0 +1,16 @@
+# Working agreement for solana-mpp-payer
+
+Public repo: `agent-default/solana-mpp-payer`. Package later, if needed:
+`@agent-default/solana-mpp-payer`.
+
+Keep all product code in this repository. Do not add an x402-only client,
+facilitator, Bazaar wrapper, or a second payment rail.
+
+- Use `@solana/pay-kit` + `mppx` + `@solana/kit`. Not deprecated `@solana/mpp`.
+- Treat every MPP challenge as hostile: allowlist network, USDC mint, and
+  recipient; enforce the ceiling before creating or signing a transaction.
+- Do not call `createPayKitClient().fetch()` as the guarded path.
+- Do not log private keys, full credentials, or raw signed transactions.
+- Default `devnet` and ceiling `0`. Mainnet needs `ALLOW_MAINNET=1`.
+- `LIVE_PAY=0` until an opt-in fixture exists.
+- Run `npm test` before handoff. Network tests must be opt-in.
