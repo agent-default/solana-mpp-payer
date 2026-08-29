@@ -45,6 +45,13 @@ node src/main.js pick 'Payment id="x", realm="r", method="solana", intent="charg
 - splits
 - amount over ceiling
 
+## OpenRouter status
+
+The current MPP OpenRouter endpoint advertises Tempo charge/session offers,
+not native Solana `solana/charge`. This payer refuses it before signing; see
+[`OPENROUTER.md`](docs/OPENROUTER.md). A normal OpenRouter API-key request is a
+separate billing path.
+
 ## License
 
 MIT

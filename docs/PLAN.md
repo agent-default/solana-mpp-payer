@@ -41,6 +41,9 @@ payment beyond its ceiling.
 - Killing and restarting preserves the same pubkey and remaining ceiling.
 - A second payment that would exceed the ceiling is refused before sign.
 
-OpenRouter is a target integration, not a hard-coded assumption. The client
-should be ready for it, but support is only declared after its live challenge
-and receipt are observed.
+OpenRouter is a target integration, not a hard-coded assumption. The live MPP
+endpoint currently advertises Tempo charge/session offers rather than native
+Solana `solana/charge`; this payer therefore refuses it before signing. See
+[`OPENROUTER.md`](OPENROUTER.md). Support should only be declared after a
+compatible Solana challenge and receipt are observed, or after an explicit
+product decision to add a separately controlled Tempo payer.
