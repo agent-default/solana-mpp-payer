@@ -76,9 +76,8 @@ export async function livePay(url, policy, ctx = {}) {
     return { ...out, status: await ctx.complete(url, out) };
   }
   const { Mppx } = await import("@solana/mpp/client");
-  refuseFetchFacade(Mppx);
   const mppx = Mppx.create({ methods: [out.method], polyfill: false });
-  refuseFetchFacade(mppx);
+  if (typeof mppx.fetch !== "function") throw new Error("Mppx.fetch missing; refuse before sign");
   const paid = await mppx.fetch(url);
   return { ...out, status: paid.status };
 }
