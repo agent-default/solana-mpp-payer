@@ -86,6 +86,32 @@ test("liveSession probes 402, refuses LIVE_PAY=0, and drives via injected comple
   assert.equal(out.seam.intent, "session");
 });
 
+test("liveSession meters cumulative amounts through SessionFetchClient", async () => {
+  const url = "https://example.invalid/session";
+  const recorded = [];
+  const rawFetch = async () =>
+    new Response("payment_required", { status: 402, headers: { "WWW-Authenticate": sessionHdr() } });
+  const out = await liveSession(url, policy, {
+    env: { LIVE_PAY: "1" },
+    rpcUrl: "https://example.invalid",
+    signer: { pubkey: "x" },
+    rawFetch,
+    sessionOpener: () => async () => ({ payload: { action: "open" }, session: {} }),
+    meter: [100n, 200n, 300n],
+    sessionFetch: () => ({
+      fetchWithSession: async () => new Response("ok", { status: 200 }),
+      recordCumulative: (n, o) => recorded.push([n, o?.force === true]),
+      flush: async () => null,
+      get cumulativeAmount() {
+        return String(recorded.at(-1)?.[0] ?? 0);
+      },
+    }),
+  });
+  assert.deepEqual(recorded, [[100n, true], [200n, true], [300n, true]]);
+  assert.equal(out.status, 200);
+  assert.equal(out.cumulative, "300");
+});
+
 test("loadSolanaSession resolves the named factory and refuses the fetch facade", async () => {
   const stub = (a) => a;
   assert.equal(await loadSolanaSession({ solana: { session: stub } }), stub);

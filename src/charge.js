@@ -73,9 +73,9 @@ export function sessionOpen(seam, { rpcUrl, signer, expiresAt } = {}) {
 }
 
 /**
- * Policy, then build the gated push-mode session opener. Does NOT construct a
- * SessionFetchClient or open a channel — that is the next increment. LIVE_PAY=0
- * still refuses.
+ * Policy, then the push-mode session opener. Default is
+ * createEphemeralSessionOpener (loopback). createPaymentChannelSessionOpener
+ * is pull-only in @solana/mpp 0.7.0 and is refused by assertPolicy.
  */
 export async function runSession(headers, policy, ctx = {}) {
   const seam = beforeSign(headers, policy);
@@ -87,7 +87,16 @@ export async function runSession(headers, policy, ctx = {}) {
     typeof ctx.sessionOpener === "function"
       ? ctx.sessionOpener
       : (await import("@solana/mpp/client")).createEphemeralSessionOpener;
-  return { seam, open, opener: makeOpener({ mode: open.mode, deposit: open.deposit, signer: open.signer }) };
+  return {
+    seam,
+    open,
+    opener: makeOpener({
+      mode: open.mode,
+      deposit: open.deposit,
+      signer: open.signer,
+      rpcUrl: open.rpcUrl,
+    }),
+  };
 }
 
 /**
@@ -151,14 +160,25 @@ export async function liveSession(url, policy, ctx = {}) {
   if (typeof ctx.complete === "function") {
     return { ...out, status: await ctx.complete(url, out) };
   }
-  const { createSessionFetch } = await import("@solana/mpp/client");
-  if (typeof createSessionFetch !== "function") {
-    throw new Error("createSessionFetch missing; refuse before sign");
-  }
-  const client = createSessionFetch({ opener: out.opener, fetch: rawFetch });
+  const makeFetch =
+    typeof ctx.sessionFetch === "function"
+      ? ctx.sessionFetch
+      : (await import("@solana/mpp/client")).createSessionFetch;
+  if (typeof makeFetch !== "function") throw new Error("createSessionFetch missing; refuse before sign");
+  const client = makeFetch({ opener: out.opener, fetch: rawFetch });
   if (typeof client.fetchWithSession !== "function") {
     throw new Error("SessionFetchClient.fetchWithSession missing; refuse before sign");
   }
   const paid = await client.fetchWithSession(url);
-  return { ...out, status: paid.status };
+  const meter = ctx.meter;
+  if (Array.isArray(meter) && meter.length) {
+    if (typeof client.recordCumulative !== "function" || typeof client.flush !== "function") {
+      throw new Error("SessionFetchClient meter API missing; refuse before sign");
+    }
+    for (const n of meter) {
+      client.recordCumulative(n, { force: true });
+      await client.flush();
+    }
+  }
+  return { ...out, status: paid.status, cumulative: client.cumulativeAmount };
 }

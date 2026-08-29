@@ -19,6 +19,18 @@ if (!RECIPIENT) {
   throw new Error("MPP_FIXTURE_RECIPIENT is required; refuse to start");
 }
 
+const sessionParams = {
+  operator: RECIPIENT,
+  recipient: RECIPIENT,
+  cap: BigInt(AMOUNT),
+  currency: MINT,
+  decimals: 6,
+  network: NETWORK,
+  modes: ["push"],
+  pricing: { perDelivery: 100n },
+  rpcUrl: RPC_URL,
+};
+const sessionRoutes = solana.session.routes(sessionParams);
 const mppx = Mppx.create({
   realm: "mpp-devnet-loopback",
   secretKey: randomBytes(32).toString("hex"),
@@ -30,17 +42,7 @@ const mppx = Mppx.create({
       recipient: RECIPIENT,
       rpcUrl: RPC_URL,
     }),
-    solana.session({
-      operator: RECIPIENT,
-      recipient: RECIPIENT,
-      cap: BigInt(AMOUNT),
-      currency: MINT,
-      decimals: 6,
-      network: NETWORK,
-      modes: ["push"],
-      pricing: { perDelivery: 100n },
-      rpcUrl: RPC_URL,
-    }),
+    solana.session(sessionParams),
   ],
 });
 const payment = mppx.charge({
@@ -54,15 +56,19 @@ const metered = mppx.session({
   description: "MPP devnet loopback session",
 });
 
-function toRequest(req) {
+async function toRequest(req) {
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) {
     if (typeof value === "string") headers.set(name, value);
     else if (Array.isArray(value)) headers.set(name, value.join(", "));
   }
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const body = chunks.length ? Buffer.concat(chunks) : undefined;
   return new Request(`http://${HOST}:${PORT}${req.url || PATH}`, {
     method: req.method || "GET",
     headers,
+    body,
   });
 }
 
@@ -81,12 +87,21 @@ const server = createServer(async (req, res) => {
       return;
     }
     const pathname = new URL(req.url || PATH, `http://${HOST}:${PORT}`).pathname;
-    if (req.method !== "GET" || (pathname !== PATH && pathname !== SESSION_PATH)) {
+    if (req.method === "POST" && pathname === "/__402/session/deliveries") {
+      await sendResponse(res, await sessionRoutes.deliveries(await toRequest(req)));
+      return;
+    }
+    if (req.method === "POST" && pathname === "/__402/session/commit") {
+      await sendResponse(res, await sessionRoutes.commit(await toRequest(req)));
+      return;
+    }
+    const sessionPost = req.method === "POST" && pathname === SESSION_PATH;
+    if (!(req.method === "GET" || sessionPost) || (pathname !== PATH && pathname !== SESSION_PATH)) {
       await sendResponse(res, new Response("Not found", { status: 404 }));
       return;
     }
 
-    const result = await (pathname === SESSION_PATH ? metered : payment)(toRequest(req));
+    const result = await (pathname === SESSION_PATH ? metered : payment)(await toRequest(req));
     if (result.status === 402) {
       await sendResponse(res, result.challenge);
       return;

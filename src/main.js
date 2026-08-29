@@ -71,10 +71,15 @@ try {
       {
         rpcUrl: process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
         signer: signer.signer,
+        meter: (process.env.MPP_SESSION_METER || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => BigInt(s)),
       },
     );
     console.log(
-      `session status ${out.status} cap ${out.seam.hit.amount} deposit ${out.open.deposit} recipient ${out.seam.hit.request.recipient} network ${out.open.expectedNetwork}`,
+      `session status ${out.status} cap ${out.seam.hit.amount} deposit ${out.open.deposit} cumulative ${out.cumulative ?? "0"} recipient ${out.seam.hit.request.recipient} network ${out.open.expectedNetwork}`,
     );
   } else {
     throw new Error("usage: node src/main.js init|status|pick|ceiling|charge|pay|session");
