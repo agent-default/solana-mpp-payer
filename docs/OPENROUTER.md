@@ -21,6 +21,11 @@ The live offers specified Tempo chain ID `4217` and a Tempo token. The service
 catalog likewise describes OpenRouter as a Tempo `session` service. It did not
 advertise native `method="solana"`, Solana devnet, or Circle devnet USDC.
 
+The similarly named `openrouter.mpp.moderato.tempo.xyz` host resolved, but its
+root, models route, and chat route returned HTTP 401 requiring an `x-api-key`
+before issuing any MPP challenge. It was not a usable testnet payment target
+in this probe.
+
 ## Compatibility decision
 
 This repository is a Solana-only payer for Circle USDC. Its guarded seam is
