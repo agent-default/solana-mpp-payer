@@ -38,12 +38,67 @@ export function assertLivePay(env = process.env) {
   if (env.LIVE_PAY !== "1") throw new Error("LIVE_PAY=0; refuse before sign");
 }
 
+/** Named factory: `@solana/mpp/client` `solana.session` (metered escrow). Never pay-kit `fetch()`. */
+export async function loadSolanaSession(mod) {
+  const m = mod ?? (await import("@solana/mpp/client"));
+  refuseFetchFacade(m);
+  refuseFetchFacade(m.default);
+  const session = m.solana?.session ?? m.session ?? m.default?.solana?.session;
+  if (typeof session !== "function") {
+    throw new Error("solana.session not exported by @solana/mpp/client; refuse createPayKitClient().fetch()");
+  }
+  return session;
+}
+
+/**
+ * Push-mode session opener config. `deposit` is pinned to the ceiling seam, not
+ * left to the SDK default (= challenge cap). Pull-mode is refused upstream in
+ * assertPolicy. Consumed by `createEphemeralSessionOpener` in the loopback path.
+ */
+export function sessionOpen(seam, { rpcUrl, signer, expiresAt } = {}) {
+  if (seam?.intent !== "session") throw new Error("session seam required; refuse before sign");
+  if (seam.expectedNetwork == null || seam.maxAmount == null) {
+    throw new Error("beforeSign seam required; refuse before sign");
+  }
+  if (!rpcUrl) throw new Error("SOLANA_RPC_URL required; refuse before sign");
+  if (!signer) throw new Error("signer required; refuse before sign");
+  return {
+    mode: "push",
+    expectedNetwork: seam.expectedNetwork,
+    deposit: seam.maxAmount,
+    rpcUrl,
+    signer,
+    ...(expiresAt == null ? {} : { expiresAt }),
+  };
+}
+
+/**
+ * Policy, then build the gated push-mode session opener. Does NOT construct a
+ * SessionFetchClient or open a channel — that is the next increment. LIVE_PAY=0
+ * still refuses.
+ */
+export async function runSession(headers, policy, ctx = {}) {
+  const seam = beforeSign(headers, policy);
+  if (seam.intent !== "session") throw new Error("not a solana/session challenge; use runCharge");
+  assertLivePay(ctx.env || process.env);
+  refuseFetchFacade(ctx.sessionOpener);
+  const open = sessionOpen(seam, ctx);
+  const makeOpener =
+    typeof ctx.sessionOpener === "function"
+      ? ctx.sessionOpener
+      : (await import("@solana/mpp/client")).createEphemeralSessionOpener;
+  return { seam, open, opener: makeOpener({ mode: open.mode, deposit: open.deposit, signer: open.signer }) };
+}
+
 /**
  * Policy, then `@solana/mpp/client` `solana.charge`. LIVE_PAY=0 still refuses.
  * Do not call the factory on the default path from tests.
  */
 export async function runCharge(headers, policy, ctx = {}) {
   const seam = beforeSign(headers, policy);
+  if (seam.intent === "session") {
+    throw new Error("solana/session challenge: use runSession (live drive not wired yet)");
+  }
   assertLivePay(ctx.env || process.env);
   refuseFetchFacade(ctx.solanaCharge);
   const args = chargeArgs(seam, ctx);
