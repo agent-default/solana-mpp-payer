@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { USDC, USDC_DEVNET } from "./lib.js";
-import { loadSolanaSession, runCharge, runSession, sessionOpen } from "./charge.js";
+import { liveSession, loadSolanaSession, runCharge, runSession, sessionOpen } from "./charge.js";
 import { beforeSign } from "./policy.js";
 
 const RECIPIENT = "11111111111111111111111111111111";
@@ -62,6 +62,28 @@ test("runSession refuses a charge challenge; runCharge refuses a session challen
     runCharge([sessionHdr()], policy, { env: { LIVE_PAY: "1" }, rpcUrl: "x", signer: {} }),
     /use runSession/,
   );
+});
+
+test("liveSession probes 402, refuses LIVE_PAY=0, and drives via injected complete", async () => {
+  const url = "https://example.invalid/session";
+  await assert.rejects(liveSession(url, policy, { env: { LIVE_PAY: "0" } }), /LIVE_PAY=0/);
+  const rawFetch = async () =>
+    new Response("payment_required", { status: 402, headers: { "WWW-Authenticate": sessionHdr() } });
+  const out = await liveSession(url, policy, {
+    env: { LIVE_PAY: "1" },
+    rpcUrl: "https://example.invalid",
+    signer: { pubkey: "x" },
+    rawFetch,
+    sessionOpener: () => async () => ({ payload: { action: "open" }, session: {} }),
+    complete: async (_u, built) => {
+      assert.equal(built.seam.intent, "session");
+      assert.equal(built.open.deposit, 10000n);
+      assert.equal(built.open.mode, "push");
+      return 200;
+    },
+  });
+  assert.equal(out.status, 200);
+  assert.equal(out.seam.intent, "session");
 });
 
 test("loadSolanaSession resolves the named factory and refuses the fetch facade", async () => {

@@ -10,6 +10,7 @@ const MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const RECIPIENT = process.env.MPP_FIXTURE_RECIPIENT;
 const AMOUNT = "10000";
 const PATH = "/quote/AAPL";
+const SESSION_PATH = "/session/AAPL";
 
 if (!Number.isInteger(PORT) || PORT < 1024 || PORT > 65535) {
   throw new Error("MPP_FIXTURE_PORT must be an integer between 1024 and 65535");
@@ -29,12 +30,28 @@ const mppx = Mppx.create({
       recipient: RECIPIENT,
       rpcUrl: RPC_URL,
     }),
+    solana.session({
+      operator: RECIPIENT,
+      recipient: RECIPIENT,
+      cap: BigInt(AMOUNT),
+      currency: MINT,
+      decimals: 6,
+      network: NETWORK,
+      modes: ["push"],
+      pricing: { perDelivery: 100n },
+      rpcUrl: RPC_URL,
+    }),
   ],
 });
 const payment = mppx.charge({
   amount: AMOUNT,
   currency: MINT,
   description: "MPP devnet loopback quote",
+});
+const metered = mppx.session({
+  cap: AMOUNT,
+  currency: MINT,
+  description: "MPP devnet loopback session",
 });
 
 function toRequest(req) {
@@ -58,15 +75,18 @@ async function sendResponse(res, response) {
 const server = createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") {
-      await sendResponse(res, Response.json({ ok: true, network: NETWORK, mint: MINT, amount: AMOUNT }));
+      await sendResponse(res, Response.json({
+        ok: true, network: NETWORK, mint: MINT, amount: AMOUNT, charge: PATH, session: SESSION_PATH,
+      }));
       return;
     }
-    if (req.method !== "GET" || new URL(req.url || PATH, `http://${HOST}:${PORT}`).pathname !== PATH) {
+    const pathname = new URL(req.url || PATH, `http://${HOST}:${PORT}`).pathname;
+    if (req.method !== "GET" || (pathname !== PATH && pathname !== SESSION_PATH)) {
       await sendResponse(res, new Response("Not found", { status: 404 }));
       return;
     }
 
-    const result = await payment(toRequest(req));
+    const result = await (pathname === SESSION_PATH ? metered : payment)(toRequest(req));
     if (result.status === 402) {
       await sendResponse(res, result.challenge);
       return;

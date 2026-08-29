@@ -16,6 +16,7 @@
     "ceiling": "node src/main.js ceiling",
     "charge": "node src/main.js charge",
     "pay": "node src/main.js pay",
+    "session": "node src/main.js session",
     "test": "node --test src/*.test.js"
   },
   "engines": {

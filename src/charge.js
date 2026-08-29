@@ -97,7 +97,7 @@ export async function runSession(headers, policy, ctx = {}) {
 export async function runCharge(headers, policy, ctx = {}) {
   const seam = beforeSign(headers, policy);
   if (seam.intent === "session") {
-    throw new Error("solana/session challenge: use runSession (live drive not wired yet)");
+    throw new Error("solana/session challenge: use runSession");
   }
   assertLivePay(ctx.env || process.env);
   refuseFetchFacade(ctx.solanaCharge);
@@ -134,5 +134,31 @@ export async function livePay(url, policy, ctx = {}) {
   const mppx = Mppx.create({ methods: [out.method], polyfill: false });
   if (typeof mppx.fetch !== "function") throw new Error("Mppx.fetch missing; refuse before sign");
   const paid = await mppx.fetch(url);
+  return { ...out, status: paid.status };
+}
+
+/**
+ * Probe a session 402, refuse before sign, then createSessionFetch +
+ * fetchWithSession. Not createPayKitClient().fetch(). Inject complete() in tests.
+ */
+export async function liveSession(url, policy, ctx = {}) {
+  if (!url) throw new Error("seller URL required; refuse before sign");
+  assertLivePay(ctx.env || process.env);
+  const rawFetch = ctx.rawFetch || fetch;
+  const probe = await rawFetch(url);
+  if (probe.status !== 402) throw new Error(`expected 402 from seller, got ${probe.status}; refuse before sign`);
+  const out = await runSession(wwwAuthenticate(probe), policy, ctx);
+  if (typeof ctx.complete === "function") {
+    return { ...out, status: await ctx.complete(url, out) };
+  }
+  const { createSessionFetch } = await import("@solana/mpp/client");
+  if (typeof createSessionFetch !== "function") {
+    throw new Error("createSessionFetch missing; refuse before sign");
+  }
+  const client = createSessionFetch({ opener: out.opener, fetch: rawFetch });
+  if (typeof client.fetchWithSession !== "function") {
+    throw new Error("SessionFetchClient.fetchWithSession missing; refuse before sign");
+  }
+  const paid = await client.fetchWithSession(url);
   return { ...out, status: paid.status };
 }

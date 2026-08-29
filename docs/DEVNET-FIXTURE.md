@@ -42,7 +42,9 @@ curl -i http://127.0.0.1:4173/quote/AAPL
 ```
 
 It must advertise `method="solana"`, `intent="charge"`, network `devnet`,
-Circle mint `4zMMC9…`, and amount `10000`. Then run exactly one guarded payment:
+Circle mint `4zMMC9…`, and amount `10000`. `GET /session/AAPL` is the
+push-only `solana/session` 402 (`cap` 10000). Then run exactly one guarded
+charge; a session open is a separate increment (`node src/main.js session`):
 
 ```sh
 LIVE_PAY=1 \
