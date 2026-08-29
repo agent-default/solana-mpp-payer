@@ -20,10 +20,10 @@ Solana-principal path without changing Hermes or importing another agent tree.
 
 ## The complement this repository builds
 
-Use the official Solana MPP client surface (`@solana/pay-kit/client`) with the
-standard keypair created by `npm run init`. The adapter must select native
-Solana MPP, validate the exact USDC/network/recipient/amount policy, sign only
-after the ceiling passes, retry the original request, and emit a safe receipt.
+Use `@solana/mpp/client` `solana.charge` for the guarded factory and
+`@solana/pay-kit` for the file keypair from `npm run init`. Validate
+USDC/network/recipient/amount before sign; do not use
+`createPayKitClient().fetch()` on that path.
 
 This is an implementation gap, not a claim that the Hermes skill or MPP
 protocol is frozen. Re-check the upstream skill before publishing or proposing

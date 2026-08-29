@@ -99,6 +99,24 @@ export async function loadPrincipal(dir) {
   }
 }
 
+export function parseCeiling(raw) {
+  const s = String(raw ?? "").trim();
+  if (!/^[0-9]+$/.test(s)) throw new Error("ceiling must be a non-negative integer (raw base units)");
+  const ceiling = BigInt(s);
+  if (ceiling > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("ceiling exceeds JSON number range; refuse");
+  return Number(ceiling);
+}
+
+/** Persist spend_ceiling_raw only. Never rewrite the keystore. */
+export async function setCeiling(dir, raw) {
+  const principal = await loadPrincipal(dir);
+  principal.spend_ceiling_raw = parseCeiling(raw);
+  const path = join(dir, "principal.json");
+  await writeFile(path, JSON.stringify(principal, null, 2) + "\n");
+  await chmod(path, 0o600);
+  return principal;
+}
+
 /** Load only the ignored local file key; never log or return its bytes. */
 export async function loadSigner(dir) {
   const path = keystorePath(dir);

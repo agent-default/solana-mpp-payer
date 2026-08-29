@@ -1,4 +1,4 @@
-import { home, init, loadPrincipal, loadPrincipalSigner } from "./lib.js";
+import { home, init, loadPrincipal, loadPrincipalSigner, setCeiling } from "./lib.js";
 import { runCharge } from "./charge.js";
 import { beforeSign, policyFromPrincipal } from "./policy.js";
 
@@ -25,6 +25,10 @@ try {
     console.log(
       `method ${seam.hit.method} intent ${seam.hit.intent} amount ${seam.hit.amount} recipient ${seam.hit.request.recipient} expectedNetwork ${seam.expectedNetwork} maxAmount ${seam.maxAmount}`,
     );
+  } else if (cmd === "ceiling") {
+    if (!rest.length) throw new Error("ceiling <raw-base-units>");
+    const p = await setCeiling(dir, rest[0]);
+    console.log(`pubkey ${p.pubkey} ceiling ${p.spend_ceiling_raw}`);
   } else if (cmd === "charge") {
     if (!rest.length) throw new Error("charge <WWW-Authenticate...>");
     const { principal: p, signer } = await loadPrincipalSigner(dir);
@@ -38,7 +42,7 @@ try {
     );
     console.log(`charged expectedNetwork ${out.args.expectedNetwork} maxAmount ${out.args.maxAmount}`);
   } else {
-    throw new Error("usage: node src/main.js init|status|pick|charge");
+    throw new Error("usage: node src/main.js init|status|pick|ceiling|charge");
   }
 } catch (e) {
   console.error(e.message);

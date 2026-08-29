@@ -6,14 +6,14 @@ export function refuseFetchFacade(impl) {
   }
 }
 
-/** Use an injected or upstream `solana.charge`. Never the auto-pay fetch client. */
+/** Named factory: `@solana/mpp/client` `solana.charge` (pay-kit#298). Never pay-kit `fetch()`. */
 export async function loadSolanaCharge(mod) {
-  const m = mod ?? (await import("@solana/pay-kit/client"));
+  const m = mod ?? (await import("@solana/mpp/client"));
   refuseFetchFacade(m);
   refuseFetchFacade(m.default);
   const charge = m.solana?.charge ?? m.charge ?? m.default?.solana?.charge;
   if (typeof charge !== "function") {
-    throw new Error("solana.charge not exported by @solana/pay-kit/client; refuse createPayKitClient().fetch()");
+    throw new Error("solana.charge not exported by @solana/mpp/client; refuse createPayKitClient().fetch()");
   }
   return charge;
 }
@@ -39,14 +39,17 @@ export function assertLivePay(env = process.env) {
 }
 
 /**
- * Policy, then low-level charge. `@solana/pay-kit/client` only exports
- * unrestricted `fetch()` — inject `solanaCharge` until that export exists.
+ * Policy, then `@solana/mpp/client` `solana.charge`. LIVE_PAY=0 still refuses.
+ * Do not call the factory on the default path from tests.
  */
 export async function runCharge(headers, policy, ctx = {}) {
   const seam = beforeSign(headers, policy);
   assertLivePay(ctx.env || process.env);
   refuseFetchFacade(ctx.solanaCharge);
   const args = chargeArgs(seam, ctx);
-  const charge = typeof ctx.solanaCharge === "function" ? ctx.solanaCharge : await loadSolanaCharge(ctx.payKitClient);
+  const charge =
+    typeof ctx.solanaCharge === "function"
+      ? ctx.solanaCharge
+      : await loadSolanaCharge(ctx.mppClient ?? ctx.payKitClient);
   return { seam, args, method: charge(args) };
 }

@@ -51,12 +51,14 @@ test("runCharge refuses live path and unrestricted fetch", async () => {
   assert.equal(out.method, "method");
 });
 
-test("loadSolanaCharge uses injected solana.charge and refuses today's client export", async () => {
+test("loadSolanaCharge uses @solana/mpp/client solana.charge and still refuses fetch", async () => {
   const stub = (a) => a;
   const loaded = await loadSolanaCharge({ solana: { charge: stub } });
   assert.equal(loaded, stub);
+  const named = await loadSolanaCharge();
+  assert.equal(typeof named, "function");
   assert.equal(typeof createPayKitClient, "function");
-  await assert.rejects(loadSolanaCharge(), /refuse createPayKitClient\(\)\.fetch/);
+  await assert.rejects(loadSolanaCharge({ fetch: async () => {} }), /refuse createPayKitClient\(\)\.fetch/);
 });
 
 test("runCharge receives the protocol signer loaded from the ignored file key", async () => {

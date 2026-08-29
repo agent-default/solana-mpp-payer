@@ -23,9 +23,10 @@ page when the MPP/Solana SDKs release.
   milestone: one-time transaction/receipt flow.
 - [Solana session](https://mpp.dev/payment-methods/solana/session) —
   escrow-backed cumulative vouchers for later metered inference.
-- [`@solana/pay-kit`](https://github.com/solana-foundation/pay-kit) — current
-  TypeScript surface for Solana MPP; the old `@solana/mpp` package is
-  deprecated.
+- [`@solana/mpp`](https://github.com/solana-foundation/pay-kit) — low-level
+  `solana.charge` (`expectedNetwork` / `maxAmount`) via `@solana/mpp/client`
+  (named in pay-kit#298). `@solana/pay-kit` remains the convenience client
+  (`createPayKitClient().fetch()`) and file Signer; not the guarded path.
 - [`@solana/kit`](https://github.com/anza-xyz/kit) — Solana JavaScript API,
   signer, transaction, and RPC primitives.
 - [`mppx`](https://github.com/wevm/mppx) — TypeScript MPP core/client/server

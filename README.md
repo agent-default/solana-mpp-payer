@@ -6,19 +6,18 @@ with a hard pre-sign spend ceiling.
 ## Status
 
 `beforeSign` allowlists network, mint, recipient, and ceiling, then
-`chargeArgs` produces `{ expectedNetwork, maxAmount }` for a low-level
-`solana.charge` call.
+`chargeArgs` feeds `{ expectedNetwork, maxAmount }` into
+`solana.charge` from [`@solana/mpp/client`](https://www.npmjs.com/package/@solana/mpp)
+(the factory named on [pay-kit#298](https://github.com/solana-foundation/pay-kit/issues/298)).
 
-`@solana/pay-kit/client` currently exports only `createPayKitClient().fetch()`,
-which auto-pays and does not take those kwargs. This process refuses that
-facade. Inject `solana.charge` (or an upstream `solana.charge` export) so
-`runCharge` can pass `expectedNetwork` and `maxAmount`. `LIVE_PAY=1` is
-still required.
+`createPayKitClient().fetch()` is refused on the guarded path. It auto-pays
+and cannot take those kwargs. `@solana/pay-kit` is used for the file Signer
+only.
 
-Tracking the required client export: [pay-kit#298](https://github.com/solana-foundation/pay-kit/issues/298).
-
-Default network is `devnet`. Ceiling starts at `0` (refuse all spends).
-Mainnet requires `ALLOW_MAINNET=1`.
+Default network is `devnet`. `init` starts the ceiling at `0` (refuse all
+spends). Set it with `ceiling <raw-base-units>`. Mainnet requires
+`ALLOW_MAINNET=1`. `LIVE_PAY=0` until an opt-in charge; this tree does not
+broadcast by default.
 
 ## Quickstart
 
@@ -26,6 +25,7 @@ Mainnet requires `ALLOW_MAINNET=1`.
 npm ci
 npm test
 node src/main.js init
+node src/main.js ceiling 10000
 node src/main.js status
 ```
 

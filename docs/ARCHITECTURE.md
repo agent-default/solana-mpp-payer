@@ -29,6 +29,8 @@ off-chain-voucher-backed `session`. We start with charge because it yields one
 easy-to-audit transaction. Session is appropriate later for high-frequency
 inference, but its escrow cap and close/refund lifecycle need separate tests.
 
-The code currently contains the decoder, `beforeSign` policy gate, and
-`chargeArgs` kwargs. Do not call `createPayKitClient().fetch()` as the
-guarded path.
+The code currently contains the decoder, `beforeSign` policy gate,
+`chargeArgs` kwargs, and `loadSolanaCharge()` which imports
+`solana.charge` from `@solana/mpp/client`. Do not call
+`createPayKitClient().fetch()` as the guarded path. `LIVE_PAY=0` still
+refuses before that factory runs.

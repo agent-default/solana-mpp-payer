@@ -13,12 +13,16 @@
     "init": "node src/main.js init",
     "status": "node src/main.js status",
     "pick": "node src/main.js pick",
+    "ceiling": "node src/main.js ceiling",
     "charge": "node src/main.js charge",
     "test": "node --test src/*.test.js"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@solana/kit": "^6.10.0",
+    "@solana/mpp": "^0.7.0",
     "@solana/pay-kit": "^0.9.0",
     "mppx": "^0.9.0"
   }
