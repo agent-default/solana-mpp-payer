@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createPayKitClient } from "@solana/pay-kit/client";
 import { init, loadSigner, USDC_DEVNET } from "./lib.js";
 import { beforeSign } from "./policy.js";
-import { chargeArgs, loadSolanaCharge, runCharge } from "./charge.js";
+import { chargeArgs, livePay, loadSolanaCharge, runCharge } from "./charge.js";
 
 const RECIPIENT = "11111111111111111111111111111111";
 function hdr() {
@@ -59,6 +59,37 @@ test("loadSolanaCharge uses @solana/mpp/client solana.charge and still refuses f
   assert.equal(typeof named, "function");
   assert.equal(typeof createPayKitClient, "function");
   await assert.rejects(loadSolanaCharge({ fetch: async () => {} }), /refuse createPayKitClient\(\)\.fetch/);
+});
+
+test("livePay probes 402, refuses LIVE_PAY=0, and does not use pay-kit fetch", async () => {
+  const url = "https://example.invalid/paid";
+  await assert.rejects(livePay(url, policy, { env: { LIVE_PAY: "0" } }), /LIVE_PAY=0/);
+  const rawFetch = async () =>
+    new Response("payment_required", {
+      status: 402,
+      headers: { "WWW-Authenticate": hdr() },
+    });
+  const out = await livePay(url, policy, {
+    env: { LIVE_PAY: "1" },
+    rpcUrl: "https://example.invalid",
+    signer: { pubkey: "x" },
+    rawFetch,
+    solanaCharge: (a) => a,
+    complete: async () => 200,
+  });
+  assert.equal(out.status, 200);
+  assert.equal(out.args.expectedNetwork, "devnet");
+  assert.equal(out.args.maxAmount, 10000n);
+  await assert.rejects(
+    livePay(url, policy, {
+      env: { LIVE_PAY: "1" },
+      rpcUrl: "https://example.invalid",
+      signer: { pubkey: "x" },
+      rawFetch,
+      solanaCharge: { fetch: async () => {} },
+    }),
+    /refuse createPayKitClient\(\)\.fetch/,
+  );
 });
 
 test("runCharge receives the protocol signer loaded from the ignored file key", async () => {

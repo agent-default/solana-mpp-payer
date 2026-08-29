@@ -1,5 +1,5 @@
 import { home, init, loadPrincipal, loadPrincipalSigner, setCeiling } from "./lib.js";
-import { runCharge } from "./charge.js";
+import { livePay, runCharge } from "./charge.js";
 import { beforeSign, policyFromPrincipal } from "./policy.js";
 
 const dir = home();
@@ -41,8 +41,26 @@ try {
       { rpcUrl: process.env.SOLANA_RPC_URL, signer: signer.signer },
     );
     console.log(`charged expectedNetwork ${out.args.expectedNetwork} maxAmount ${out.args.maxAmount}`);
+  } else if (cmd === "pay") {
+    if (!rest.length) throw new Error("pay <seller-url>");
+    const { principal: p, signer } = await loadPrincipalSigner(dir);
+    const out = await livePay(
+      rest[0],
+      policyFromPrincipal(p, {
+        recipient: process.env.MPP_RECIPIENT || p.recipient,
+        allowMainnet: process.env.ALLOW_MAINNET === "1",
+      }),
+      {
+        rpcUrl: process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
+        signer: signer.signer,
+        broadcast: true,
+      },
+    );
+    console.log(
+      `paid status ${out.status} amount ${out.seam.hit.amount} recipient ${out.seam.hit.request.recipient} network ${out.args.expectedNetwork}`,
+    );
   } else {
-    throw new Error("usage: node src/main.js init|status|pick|ceiling|charge");
+    throw new Error("usage: node src/main.js init|status|pick|ceiling|charge|pay");
   }
 } catch (e) {
   console.error(e.message);

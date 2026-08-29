@@ -15,6 +15,7 @@
     "pick": "node src/main.js pick",
     "ceiling": "node src/main.js ceiling",
     "charge": "node src/main.js charge",
+    "pay": "node src/main.js pay",
     "test": "node --test src/*.test.js"
   },
   "engines": {

@@ -53,3 +53,32 @@ export async function runCharge(headers, policy, ctx = {}) {
       : await loadSolanaCharge(ctx.mppClient ?? ctx.payKitClient);
   return { seam, args, method: charge(args) };
 }
+
+function wwwAuthenticate(response) {
+  const raw = response.headers.get("www-authenticate") || "";
+  const parts = raw.split(/(?=Payment\s)/i).map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) throw new Error("402 missing WWW-Authenticate Payment; refuse before sign");
+  return parts;
+}
+
+/**
+ * Probe a seller, refuse before sign, then Mppx.fetch with the guarded method.
+ * Not createPayKitClient().fetch(). Inject complete() in tests.
+ */
+export async function livePay(url, policy, ctx = {}) {
+  if (!url) throw new Error("seller URL required; refuse before sign");
+  assertLivePay(ctx.env || process.env);
+  const rawFetch = ctx.rawFetch || fetch;
+  const probe = await rawFetch(url);
+  if (probe.status !== 402) throw new Error(`expected 402 from seller, got ${probe.status}; refuse before sign`);
+  const out = await runCharge(wwwAuthenticate(probe), policy, ctx);
+  if (typeof ctx.complete === "function") {
+    return { ...out, status: await ctx.complete(url, out) };
+  }
+  const { Mppx } = await import("@solana/mpp/client");
+  refuseFetchFacade(Mppx);
+  const mppx = Mppx.create({ methods: [out.method], polyfill: false });
+  refuseFetchFacade(mppx);
+  const paid = await mppx.fetch(url);
+  return { ...out, status: paid.status };
+}
