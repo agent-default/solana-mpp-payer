@@ -7,8 +7,12 @@ import { beforeSign } from "./policy.js";
 const RECIPIENT = "11111111111111111111111111111111";
 const policy = { network: "devnet", mint: USDC_DEVNET, recipient: RECIPIENT, ceiling: 10000n, allowMainnet: false };
 
-function sessionHdr({ cap = "10000", currency = USDC_DEVNET, recipient = RECIPIENT, operator = RECIPIENT, network = "devnet", modes } = {}) {
-  const request = { cap, currency, recipient, operator, network, ...(modes ? { modes } : {}) };
+function sessionHdr({ cap = "10000", currency = USDC_DEVNET, recipient = RECIPIENT, operator = RECIPIENT, network = "devnet", modes, pullVoucherStrategy } = {}) {
+  const request = {
+    cap, currency, recipient, operator, network,
+    ...(modes ? { modes } : {}),
+    ...(pullVoucherStrategy ? { pullVoucherStrategy } : {}),
+  };
   return `Payment id="a", realm="r", method="solana", intent="session", request="${Buffer.from(JSON.stringify(request)).toString("base64url")}"`;
 }
 function chargeHdr() {
@@ -22,6 +26,16 @@ test("sessionOpen pins the deposit to the ceiling seam and is push-mode", () => 
   assert.equal(open.mode, "push");
   assert.equal(open.expectedNetwork, "devnet");
   assert.equal(open.deposit, 10000n); // seam.maxAmount (ceiling), not the 9000 cap
+});
+
+test("sessionOpen is pull when the challenge is clientVoucher pull", () => {
+  const seam = beforeSign(
+    [sessionHdr({ cap: "9000", modes: ["pull"], pullVoucherStrategy: "clientVoucher" })],
+    policy,
+  );
+  const open = sessionOpen(seam, { rpcUrl: "https://example.invalid", signer: { pubkey: "x" } });
+  assert.equal(open.mode, "pull");
+  assert.equal(open.deposit, 10000n);
 });
 
 test("sessionOpen refuses a non-session seam and missing rpc/signer", () => {

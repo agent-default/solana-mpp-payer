@@ -15,8 +15,13 @@ function policy(over = {}) {
 }
 
 // solana/session challenge: `cap` not `amount`, `network` top-level, `operator` + `recipient`.
-function sessionHdr({ cap = "10000", currency = USDC_DEVNET, recipient = RECIPIENT, operator = RECIPIENT, network = "devnet", splits, modes } = {}) {
-  const request = { cap, currency, recipient, operator, network, ...(splits ? { splits } : {}), ...(modes ? { modes } : {}) };
+function sessionHdr({ cap = "10000", currency = USDC_DEVNET, recipient = RECIPIENT, operator = RECIPIENT, network = "devnet", splits, modes, pullVoucherStrategy } = {}) {
+  const request = {
+    cap, currency, recipient, operator, network,
+    ...(splits ? { splits } : {}),
+    ...(modes ? { modes } : {}),
+    ...(pullVoucherStrategy ? { pullVoucherStrategy } : {}),
+  };
   return `Payment id="a", realm="r", method="solana", intent="session", request="${Buffer.from(JSON.stringify(request)).toString("base64url")}"`;
 }
 
@@ -56,8 +61,15 @@ test("assertPolicy refuses hostile session challenges before sign", () => {
   assert.throws(() => assertPolicy(hit({ currency: USDC }), policy()), /mint mismatch/);
   assert.throws(() => assertPolicy(hit({ recipient: "22222222222222222222222222222222" }), policy()), /recipient mismatch/);
   assert.throws(() => assertPolicy(hit({ splits: [{ recipient: RECIPIENT, bps: 100 }] }), policy()), /splits/);
-  assert.throws(() => assertPolicy(hit({ modes: ["pull"] }), policy()), /pull-mode/);
+  assert.throws(() => assertPolicy(hit({ modes: ["pull"] }), policy()), /clientVoucher/);
+  assert.throws(
+    () => assertPolicy(hit({ modes: ["pull"], pullVoucherStrategy: "operatedVoucher" }), policy()),
+    /clientVoucher/,
+  );
   assert.doesNotThrow(() => assertPolicy(hit({ modes: ["push"] }), policy()));
+  assert.doesNotThrow(
+    () => assertPolicy(hit({ modes: ["pull"], pullVoucherStrategy: "clientVoucher" }), policy()),
+  );
 });
 
 test("policyFromPrincipal is fail-closed on recipient", () => {

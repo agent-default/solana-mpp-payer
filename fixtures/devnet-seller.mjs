@@ -19,14 +19,16 @@ if (!RECIPIENT) {
   throw new Error("MPP_FIXTURE_RECIPIENT is required; refuse to start");
 }
 
+const OPERATOR = process.env.MPP_FIXTURE_OPERATOR || RECIPIENT;
 const sessionParams = {
-  operator: RECIPIENT,
+  operator: OPERATOR,
   recipient: RECIPIENT,
   cap: BigInt(AMOUNT),
   currency: MINT,
   decimals: 6,
   network: NETWORK,
-  modes: ["push"],
+  modes: ["pull"],
+  pullVoucherStrategy: "clientVoucher",
   pricing: { perDelivery: 100n },
   rpcUrl: RPC_URL,
 };

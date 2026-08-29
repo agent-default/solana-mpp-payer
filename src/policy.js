@@ -48,7 +48,9 @@ export function assertPolicy(hit, policy) {
     throw new Error("splits refused before sign");
   }
   if (hit.intent === "session" && (hit.request.modes ?? []).includes("pull")) {
-    throw new Error("pull-mode session refused before sign; push-only");
+    if (hit.request.pullVoucherStrategy !== "clientVoucher") {
+      throw new Error("pull-mode session requires pullVoucherStrategy=clientVoucher; refuse before sign");
+    }
   }
   // charge: bound the one-shot amount. session: bound the escrow cap.
   checkSpend(hit.amount, policy.ceiling);

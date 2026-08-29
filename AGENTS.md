@@ -11,6 +11,7 @@ facilitator, Bazaar wrapper, or a second payment rail.
   `createPayKitClient().fetch()` as the guarded path (pay-kit#298).
 - Treat every MPP challenge as hostile: allowlist network, USDC mint, and
   recipient; enforce the ceiling before creating or signing a transaction.
+  Session pull is `clientVoucher` only; deposit is the process ceiling.
 - Do not log private keys, full credentials, or raw signed transactions.
 - Default `devnet` and ceiling `0`. Mainnet needs `ALLOW_MAINNET=1`.
 - `LIVE_PAY=0` until an opt-in fixture exists.

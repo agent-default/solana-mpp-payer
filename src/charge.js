@@ -51,9 +51,9 @@ export async function loadSolanaSession(mod) {
 }
 
 /**
- * Push-mode session opener config. `deposit` is pinned to the ceiling seam, not
- * left to the SDK default (= challenge cap). Pull-mode is refused upstream in
- * assertPolicy. Consumed by `createEphemeralSessionOpener` in the loopback path.
+ * Session opener config. `deposit` is pinned to the ceiling seam, not the SDK
+ * cap default. Pull is clientVoucher-only (assertPolicy). Default live opener
+ * is createPaymentChannelSessionOpener.
  */
 export function sessionOpen(seam, { rpcUrl, signer, expiresAt } = {}) {
   if (seam?.intent !== "session") throw new Error("session seam required; refuse before sign");
@@ -62,8 +62,9 @@ export function sessionOpen(seam, { rpcUrl, signer, expiresAt } = {}) {
   }
   if (!rpcUrl) throw new Error("SOLANA_RPC_URL required; refuse before sign");
   if (!signer) throw new Error("signer required; refuse before sign");
+  const pull = (seam.hit?.request?.modes ?? []).includes("pull");
   return {
-    mode: "push",
+    mode: pull ? "pull" : "push",
     expectedNetwork: seam.expectedNetwork,
     deposit: seam.maxAmount,
     rpcUrl,
@@ -73,9 +74,8 @@ export function sessionOpen(seam, { rpcUrl, signer, expiresAt } = {}) {
 }
 
 /**
- * Policy, then the push-mode session opener. Default is
- * createEphemeralSessionOpener (loopback). createPaymentChannelSessionOpener
- * is pull-only in @solana/mpp 0.7.0 and is refused by assertPolicy.
+ * Policy, then session opener. Default: createPaymentChannelSessionOpener
+ * (on-chain pull/clientVoucher). Inject sessionOpener in tests.
  */
 export async function runSession(headers, policy, ctx = {}) {
   const seam = beforeSign(headers, policy);
@@ -86,7 +86,7 @@ export async function runSession(headers, policy, ctx = {}) {
   const makeOpener =
     typeof ctx.sessionOpener === "function"
       ? ctx.sessionOpener
-      : (await import("@solana/mpp/client")).createEphemeralSessionOpener;
+      : (await import("@solana/mpp/client")).createPaymentChannelSessionOpener;
   return {
     seam,
     open,
