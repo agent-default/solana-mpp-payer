@@ -10,7 +10,8 @@ export function normalizeNetwork(network) {
 }
 
 export function challengeNetwork(hit) {
-  return normalizeNetwork(hit.request.methodDetails?.network ?? "mainnet");
+  // session carries `network` top-level; charge nests it under methodDetails.
+  return normalizeNetwork(hit.request.network ?? hit.request.methodDetails?.network ?? "mainnet");
 }
 
 export function policyFromPrincipal(p, extra = {}) {
@@ -24,10 +25,10 @@ export function policyFromPrincipal(p, extra = {}) {
   };
 }
 
-/** Gate immediately before pay-kit `solana.charge` (not `createPayKitClient().fetch()`). */
+/** Gate immediately before pay-kit `solana.charge` / `solana.session` (not `createPayKitClient().fetch()`). */
 export function assertPolicy(hit, policy) {
-  if (hit.method !== "solana" || hit.intent !== "charge") {
-    throw new Error("not solana/charge; refuse before sign");
+  if (hit.method !== "solana" || (hit.intent !== "charge" && hit.intent !== "session")) {
+    throw new Error("not solana charge/session; refuse before sign");
   }
   const network = challengeNetwork(hit);
   if (network === "mainnet" && !policy.allowMainnet) {
@@ -43,11 +44,15 @@ export function assertPolicy(hit, policy) {
   if (hit.request.recipient !== policy.recipient) {
     throw new Error("recipient mismatch; refuse before sign");
   }
-  if (hit.request.methodDetails?.splits?.length) {
+  if ((hit.request.splits ?? hit.request.methodDetails?.splits)?.length) {
     throw new Error("splits refused before sign");
   }
+  if (hit.intent === "session" && (hit.request.modes ?? []).includes("pull")) {
+    throw new Error("pull-mode session refused before sign; push-only");
+  }
+  // charge: bound the one-shot amount. session: bound the escrow cap.
   checkSpend(hit.amount, policy.ceiling);
-  return { expectedNetwork: policy.network, maxAmount: policy.ceiling };
+  return { expectedNetwork: policy.network, maxAmount: policy.ceiling, intent: hit.intent };
 }
 
 export function beforeSign(headers, policy) {

@@ -14,6 +14,12 @@ function policy(over = {}) {
   return { network: "devnet", mint: USDC_DEVNET, recipient: RECIPIENT, ceiling: 10000n, allowMainnet: false, ...over };
 }
 
+// solana/session challenge: `cap` not `amount`, `network` top-level, `operator` + `recipient`.
+function sessionHdr({ cap = "10000", currency = USDC_DEVNET, recipient = RECIPIENT, operator = RECIPIENT, network = "devnet", splits, modes } = {}) {
+  const request = { cap, currency, recipient, operator, network, ...(splits ? { splits } : {}), ...(modes ? { modes } : {}) };
+  return `Payment id="a", realm="r", method="solana", intent="session", request="${Buffer.from(JSON.stringify(request)).toString("base64url")}"`;
+}
+
 test("beforeSign passes expectedNetwork and maxAmount for pay-kit solana.charge", () => {
   const seam = beforeSign([hdr()], policy());
   assert.equal(seam.expectedNetwork, "devnet");
@@ -32,6 +38,26 @@ test("assertPolicy refuses hostile fields", () => {
   assert.throws(() => assertPolicy(hit(hdr({ splits: [{ amount: "1" }] })), policy()), /splits/);
   assert.throws(() => assertPolicy(hit(hdr({ amount: "10001" })), policy()), /exceeds ceiling/);
   assert.doesNotThrow(() => assertPolicy(hit(hdr({ network: "mainnet", currency: USDC })), policy({ network: "mainnet", mint: USDC, allowMainnet: true })));
+});
+
+test("beforeSign accepts a solana/session challenge and bounds the escrow cap by the ceiling", () => {
+  const seam = beforeSign([sessionHdr()], policy());
+  assert.equal(seam.hit.intent, "session");
+  assert.equal(seam.hit.amount, 10000n); // the cap
+  assert.equal(seam.expectedNetwork, "devnet");
+  assert.equal(seam.maxAmount, 10000n);
+  assert.equal(seam.intent, "session");
+});
+
+test("assertPolicy refuses hostile session challenges before sign", () => {
+  const hit = (o) => pickSolana([sessionHdr(o)]);
+  assert.throws(() => assertPolicy(hit({ cap: "10001" }), policy()), /exceeds ceiling/);
+  assert.throws(() => assertPolicy(hit({ network: "mainnet" }), policy()), /mainnet refused/);
+  assert.throws(() => assertPolicy(hit({ currency: USDC }), policy()), /mint mismatch/);
+  assert.throws(() => assertPolicy(hit({ recipient: "22222222222222222222222222222222" }), policy()), /recipient mismatch/);
+  assert.throws(() => assertPolicy(hit({ splits: [{ recipient: RECIPIENT, bps: 100 }] }), policy()), /splits/);
+  assert.throws(() => assertPolicy(hit({ modes: ["pull"] }), policy()), /pull-mode/);
+  assert.doesNotThrow(() => assertPolicy(hit({ modes: ["push"] }), policy()));
 });
 
 test("policyFromPrincipal is fail-closed on recipient", () => {

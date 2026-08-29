@@ -53,11 +53,20 @@ export function parseChallenge(header) {
   return { ...params, request: b64urlJson(params.request) };
 }
 
+export const SOLANA_INTENTS = new Set(["charge", "session"]);
+
 export function pickSolana(headers) {
   const parsed = headers.map(parseChallenge);
-  const hit = parsed.find((c) => c.method === "solana" && c.intent === "charge");
-  if (!hit) throw new Error(`no solana/charge challenge (got ${parsed.map((c) => `${c.method}/${c.intent}`).join(", ") || "none"})`);
-  return { ...hit, amount: BigInt(hit.request.amount) };
+  const hit = parsed.find((c) => c.method === "solana" && SOLANA_INTENTS.has(c.intent));
+  if (!hit) {
+    throw new Error(`no solana charge/session challenge (got ${parsed.map((c) => `${c.method}/${c.intent}`).join(", ") || "none"})`);
+  }
+  // charge bounds `amount`; session bounds `cap` (max the session may draw).
+  const raw = hit.intent === "session" ? hit.request.cap : hit.request.amount;
+  if (raw == null) {
+    throw new Error(`solana/${hit.intent} challenge missing ${hit.intent === "session" ? "cap" : "amount"}; refuse before sign`);
+  }
+  return { ...hit, amount: BigInt(raw) };
 }
 
 export async function init(dir) {
