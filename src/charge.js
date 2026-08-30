@@ -38,6 +38,16 @@ export function assertLivePay(env = process.env) {
   if (env.LIVE_PAY !== "1") throw new Error("LIVE_PAY=0; refuse before sign");
 }
 
+/** One in-process LIVE_PAY session. Held across the whole live flow, cleared in finally. */
+let liveDepth = 0;
+function acquireLive() {
+  if (liveDepth > 0) throw new Error("LIVE_PAY already in flight; refuse before sign");
+  liveDepth += 1;
+}
+function releaseLive() {
+  liveDepth = Math.max(0, liveDepth - 1);
+}
+
 /** Named factory: `@solana/mpp/client` `solana.session` (metered escrow). Never pay-kit `fetch()`. */
 export async function loadSolanaSession(mod) {
   const m = mod ?? (await import("@solana/mpp/client"));
@@ -82,21 +92,27 @@ export async function runSession(headers, policy, ctx = {}) {
   if (seam.intent !== "session") throw new Error("not a solana/session challenge; use runCharge");
   assertLivePay(ctx.env || process.env);
   refuseFetchFacade(ctx.sessionOpener);
-  const open = sessionOpen(seam, ctx);
-  const makeOpener =
-    typeof ctx.sessionOpener === "function"
-      ? ctx.sessionOpener
-      : (await import("@solana/mpp/client")).createPaymentChannelSessionOpener;
-  return {
-    seam,
-    open,
-    opener: makeOpener({
+  const held = ctx.liveHeld === true;
+  if (!held) acquireLive();
+  try {
+    const open = sessionOpen(seam, ctx);
+    const makeOpener =
+      typeof ctx.sessionOpener === "function"
+        ? ctx.sessionOpener
+        : (await import("@solana/mpp/client")).createPaymentChannelSessionOpener;
+    const opener = makeOpener({
       mode: open.mode,
       deposit: open.deposit,
       signer: open.signer,
       rpcUrl: open.rpcUrl,
-    }),
-  };
+    });
+    if (opener?.deposit != null && BigInt(opener.deposit) !== seam.maxAmount) {
+      throw new Error(`deposit ${opener.deposit} != seam ${seam.maxAmount}; refuse before sign`);
+    }
+    return { seam, open, opener };
+  } finally {
+    if (!held) releaseLive();
+  }
 }
 
 /**
@@ -153,10 +169,22 @@ export async function livePay(url, policy, ctx = {}) {
 export async function liveSession(url, policy, ctx = {}) {
   if (!url) throw new Error("seller URL required; refuse before sign");
   assertLivePay(ctx.env || process.env);
+  acquireLive();
+  try {
+    return await liveSessionInner(url, policy, ctx);
+  } finally {
+    releaseLive();
+  }
+}
+
+async function liveSessionInner(url, policy, ctx) {
   const rawFetch = ctx.rawFetch || fetch;
   const probe = await rawFetch(url);
   if (probe.status !== 402) throw new Error(`expected 402 from seller, got ${probe.status}; refuse before sign`);
-  const out = await runSession(wwwAuthenticate(probe), policy, ctx);
+  const out = await runSession(wwwAuthenticate(probe), policy, { ...ctx, liveHeld: true });
+  if (BigInt(out.open.deposit) !== out.seam.maxAmount) {
+    throw new Error(`deposit ${out.open.deposit} != seam ${out.seam.maxAmount}; refuse before sign`);
+  }
   if (typeof ctx.complete === "function") {
     return { ...out, status: await ctx.complete(url, out) };
   }

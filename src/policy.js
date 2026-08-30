@@ -54,7 +54,13 @@ export function assertPolicy(hit, policy) {
   }
   // charge: bound the one-shot amount. session: bound the escrow cap.
   checkSpend(hit.amount, policy.ceiling);
-  return { expectedNetwork: policy.network, maxAmount: policy.ceiling, intent: hit.intent };
+  // Session deposit is the leash itself: min(challenge cap, ceiling). Charge
+  // keeps the ceiling as solana.charge maxAmount (kwargs unchanged).
+  const maxAmount =
+    hit.intent === "session"
+      ? (hit.amount < policy.ceiling ? hit.amount : policy.ceiling)
+      : policy.ceiling;
+  return { expectedNetwork: policy.network, maxAmount, intent: hit.intent };
 }
 
 export function beforeSign(headers, policy) {

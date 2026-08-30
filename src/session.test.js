@@ -20,12 +20,14 @@ function chargeHdr() {
   return `Payment id="a", realm="r", method="solana", intent="charge", request="${Buffer.from(JSON.stringify(request)).toString("base64url")}"`;
 }
 
-test("sessionOpen pins the deposit to the ceiling seam and is push-mode", () => {
+test("sessionOpen pins the deposit to min(cap, ceiling) and is push-mode", () => {
   const seam = beforeSign([sessionHdr({ cap: "9000" })], policy);
   const open = sessionOpen(seam, { rpcUrl: "https://example.invalid", signer: { pubkey: "x" } });
   assert.equal(open.mode, "push");
   assert.equal(open.expectedNetwork, "devnet");
-  assert.equal(open.deposit, 10000n); // seam.maxAmount (ceiling), not the 9000 cap
+  assert.equal(open.deposit, 9000n); // seam.maxAmount = min(cap 9000, ceiling 10000)
+  const seamAtCap = beforeSign([sessionHdr({ cap: "10000" })], policy);
+  assert.equal(sessionOpen(seamAtCap, { rpcUrl: "x", signer: { pubkey: "x" } }).deposit, 10000n);
 });
 
 test("sessionOpen is pull when the challenge is clientVoucher pull", () => {
@@ -35,7 +37,7 @@ test("sessionOpen is pull when the challenge is clientVoucher pull", () => {
   );
   const open = sessionOpen(seam, { rpcUrl: "https://example.invalid", signer: { pubkey: "x" } });
   assert.equal(open.mode, "pull");
-  assert.equal(open.deposit, 10000n);
+  assert.equal(open.deposit, 9000n); // the seam, not a second copy of the ceiling
 });
 
 test("sessionOpen refuses a non-session seam and missing rpc/signer", () => {
@@ -132,4 +134,48 @@ test("loadSolanaSession resolves the named factory and refuses the fetch facade"
   assert.equal(typeof (await loadSolanaSession()), "function");
   assert.equal(typeof USDC, "string");
   await assert.rejects(loadSolanaSession({ fetch: async () => {} }), /refuse createPayKitClient\(\)\.fetch/);
+});
+
+test("assertPolicy bounds a session seam by min(cap, ceiling); over-cap still throws", () => {
+  assert.equal(beforeSign([sessionHdr({ cap: "9000" })], policy).maxAmount, 9000n);
+  assert.equal(beforeSign([sessionHdr({ cap: "10000" })], policy).maxAmount, 10000n);
+  assert.throws(() => beforeSign([sessionHdr({ cap: "10001" })], policy), /exceeds ceiling/);
+  // charge kwargs keep the ceiling as maxAmount (unchanged path).
+  assert.equal(beforeSign([chargeHdr()], policy).maxAmount, 10000n);
+});
+
+test("runSession refuses a stub opener whose built deposit misses the seam", async () => {
+  await assert.rejects(
+    runSession([sessionHdr({ cap: "9000" })], policy, {
+      env: { LIVE_PAY: "1" }, rpcUrl: "x", signer: { pubkey: "x" },
+      sessionOpener: (cfg) => ({ deposit: "20000", mode: cfg.mode }), // SDK cap fallback shape
+    }),
+    /deposit 20000 != seam 9000; refuse before sign/,
+  );
+});
+
+test("two overlapping liveSession calls refuse; the in-flight one completes", async () => {
+  const url = "https://example.invalid/session";
+  const rawFetch = async () =>
+    new Response("payment_required", { status: 402, headers: { "WWW-Authenticate": sessionHdr() } });
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const first = liveSession(url, policy, {
+    env: { LIVE_PAY: "1" }, rpcUrl: "x", signer: { pubkey: "x" }, rawFetch,
+    sessionOpener: () => async () => ({ payload: { action: "open" }, session: {} }),
+    complete: async () => { await gate; return 200; },
+  });
+  await assert.rejects(
+    liveSession(url, policy, { env: { LIVE_PAY: "1" }, rawFetch }),
+    /LIVE_PAY already in flight; refuse before sign/,
+  );
+  release();
+  assert.equal((await first).status, 200);
+  // mutex cleared in finally: the next session may open
+  const out = await liveSession(url, policy, {
+    env: { LIVE_PAY: "1" }, rpcUrl: "x", signer: { pubkey: "x" }, rawFetch,
+    sessionOpener: () => async () => ({}),
+    complete: async () => 200,
+  });
+  assert.equal(out.status, 200);
 });
