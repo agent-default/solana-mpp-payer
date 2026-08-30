@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
+import { createSolanaRpc, generateKeyPairSigner } from "@solana/kit";
 import { Mppx, solana } from "@solana/mpp/server";
 
 const HOST = "127.0.0.1";
@@ -11,6 +12,8 @@ const RECIPIENT = process.env.MPP_FIXTURE_RECIPIENT;
 const AMOUNT = "10000";
 const PATH = "/quote/AAPL";
 const SESSION_PATH = "/session/AAPL";
+const MIN_OPERATOR_LAMPORTS = 10_000_000n; // 0.01 SOL: open fees + channel/PDA/ATA rent
+const AIRDROP_LAMPORTS = 50_000_000n; // 0.05 SOL per devnet faucet attempt
 
 if (!Number.isInteger(PORT) || PORT < 1024 || PORT > 65535) {
   throw new Error("MPP_FIXTURE_PORT must be an integer between 1024 and 65535");
@@ -19,9 +22,36 @@ if (!RECIPIENT) {
   throw new Error("MPP_FIXTURE_RECIPIENT is required; refuse to start");
 }
 
-const OPERATOR = process.env.MPP_FIXTURE_OPERATOR || RECIPIENT;
+const rpc = createSolanaRpc(RPC_URL);
+
+/**
+ * The 402 must advertise an operator the seller actually holds, or the
+ * partially signed open never broadcasts (the silent-proof failure). This
+ * signer is in-memory only: never disk, never the payer keystore, and only
+ * its pubkey is ever printed.
+ */
+const operatorSigner = await generateKeyPairSigner();
+
+async function fundOperator(address) {
+  for (let attempt = 0; attempt <= 3; attempt++) {
+    const balance = (await rpc.getBalance(address).send()).value;
+    if (balance >= MIN_OPERATOR_LAMPORTS) return balance;
+    if (attempt === 3) break;
+    try {
+      await rpc.requestAirdrop(address, AIRDROP_LAMPORTS).send();
+    } catch {
+      // devnet faucet rate limits are routine; re-check balance instead
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  throw new Error(
+    `operator ${address} cannot pay rent/fees on devnet; pre-fund >= ${MIN_OPERATOR_LAMPORTS} lamports and restart`,
+  );
+}
+await fundOperator(operatorSigner.address);
+
 const sessionParams = {
-  operator: OPERATOR,
+  operator: operatorSigner.address,
   recipient: RECIPIENT,
   cap: BigInt(AMOUNT),
   currency: MINT,
@@ -31,6 +61,9 @@ const sessionParams = {
   pullVoucherStrategy: "clientVoucher",
   pricing: { perDelivery: 100n },
   rpcUrl: RPC_URL,
+  rpc,
+  openTxSubmitter: "server", // seller co-signs the open with the operator key and broadcasts
+  paymentChannelPayerSigner: operatorSigner,
 };
 const sessionRoutes = solana.session.routes(sessionParams);
 const mppx = Mppx.create({
@@ -120,7 +153,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`MPP_LOOPBACK_READY host=${HOST} port=${PORT} path=${PATH} network=${NETWORK} mint=${MINT} amount=${AMOUNT} recipient=${RECIPIENT}`);
+  console.log(`MPP_LOOPBACK_READY host=${HOST} port=${PORT} path=${PATH} network=${NETWORK} mint=${MINT} amount=${AMOUNT} recipient=${RECIPIENT} operator=${operatorSigner.address}`);
 });
 
 function close() {
