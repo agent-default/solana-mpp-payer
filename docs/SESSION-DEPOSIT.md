@@ -74,12 +74,17 @@ No live RPC in `npm test`. No hardcoded tx signatures as pass criteria.
 
 ## One throwaway proof (operator, after wrap tests)
 
-Only after Grok says the **function-opener** tests are the real path. Then
-one operator window validates the wrap against the live SDK (not just the
-stub). Do not run this to paper over a missing wrap.
+Only after Grok says the **function-opener** tests are the real path **and**
+the fixture advertises a signer it actually holds (`openTxSubmitter=server`,
+ephemeral operator — see `docs/DEVNET-FIXTURE.md`). The 2026-08-30 shot
+returned HTTP 200 / CLI `deposit 10000` with **no** new `transferChecked`:
+the 402 named the payer as operator and the seller held no key. Do not run
+another live session until that fixture ships. Then:
 
 1. New recipient ATA, `--url devnet`.
-2. One seller, `MPP_FIXTURE_OPERATOR=<payer>`.
+2. One seller (`MPP_FIXTURE_RECIPIENT` only). Operator is an **ephemeral
+   in-memory signer** the fixture generates at boot (`openTxSubmitter=server`).
+   Do **not** set `MPP_FIXTURE_OPERATOR` to the payer pubkey.
 3. **One** `LIVE_PAY=1` `node src/main.js session` (no `MPP_SESSION_METER`).
 4. Stop. Read the single new `transferChecked` into the channel ATA.
    Amount **must** equal `min(cap, ceiling)` (10000 with current principal).

@@ -35,6 +35,18 @@ MPP_FIXTURE_RECIPIENT="$RECIPIENT" \
 node fixtures/devnet-seller.mjs
 ```
 
+Session 402s must advertise an **ephemeral operator** generated at boot
+(in-memory signer, never disk, never the payer keystore). Do not set
+`MPP_FIXTURE_OPERATOR` to the payer pubkey — that was the proof failure:
+the 402 named the payer as operator while the seller held no key, so the
+partially signed open never broadcast.
+
+The fixture sets `openTxSubmitter: 'server'` and
+`paymentChannelPayerSigner` to that ephemeral signer so
+`/session/AAPL` (and `/__402/session/*`) co-sign + broadcast the open.
+READY log may print `operator=<pubkey>` only. Fail boot if the operator
+cannot pay rent/fees (devnet airdrop or pre-funded SOL on that pubkey).
+
 In another terminal, confirm the unpaid native MPP challenge:
 
 ```sh
