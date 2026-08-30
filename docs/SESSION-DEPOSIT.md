@@ -33,13 +33,19 @@ until the tests below pass. Do not add Tempo/OpenRouter/x402. Do not use
 
    `async ({ challenge }) => { const open = await buildOpenPaymentChannelTransaction(…); return { payload: session.openPaymentChannelAction({ deposit: open.deposit, … }), session, source }; }`
 
-   A check of `opener?.deposit` never runs. Wrap the default opener: `await opener({ challenge })`, then refuse if
-   `BigInt(result.payload?.deposit ?? result.session?.deposit ?? "") !== seam.maxAmount`
-   **before** `fetchWithSession` retries. Throw
-   `deposit … != seam …; refuse before sign`. Do not broadcast a mismatch.
+   Keep the existing object-opener guard (`opener?.deposit != null`). Do not
+   loosen it. **Both shapes refuse:**
+   - object `{ deposit: "20000" }` (already in `3bfbe0f`)
+   - async function returning `{ payload: { deposit: "20000" } }` (this wrap)
 
-   The `3bfbe0f` object stub `{ deposit: "20000" }` is **not** this type. It does
-   not cover the live SDK.
+   Put the wrap **inside `liveSessionInner` before `fetchWithSession`**: await
+   `opener({ challenge })` (or equivalent), refuse if
+   `BigInt(result.payload?.deposit ?? result.session?.deposit ?? "") !== seam.maxAmount`.
+   Throw `deposit … != seam …; refuse before sign`. Do not broadcast a mismatch.
+   Mutex: still `acquireLive` / `releaseLive` in `finally` exactly as shipped;
+   `liveHeld` still avoids self-deadlock. Do not move the mutex.
+
+   The object stub alone does **not** cover the live SDK.
 
 3. **One in-process live session.** Module-level mutex: a second
    `liveSession`/`runSession` with `LIVE_PAY=1` while one is in flight throws
@@ -55,12 +61,12 @@ until the tests below pass. Do not add Tempo/OpenRouter/x402. Do not use
 - `assertPolicy` on a session with `cap=9000`, ceiling `10000` →
   `maxAmount === 9000n`. `cap=10000` → `10000n`. `cap=10001` still throws.
 - `sessionOpen` deposit equals that `maxAmount` for pull+`clientVoucher`.
-- `runSession` with an **async function** stub that returns
-  `{ payload: { deposit: "20000" } }` against a `10000` seam **throws** the
-  mismatch error (do not call through to fetch). An object `{ deposit }` stub
-  is not enough.
-- Happy path: function stub returns `{ payload: { deposit: "10000" } }`
-  (matching `min(cap, ceiling)`); `runSession` does not throw.
+- Keep the `3bfbe0f` object stub `{ deposit: "20000" }` — still throws.
+- **Also** `liveSession` / `runSession` with an **async function** stub that
+  returns `{ payload: { deposit: "20000" } }` against a mismatched seam
+  **throws** (do not call through to fetch).
+- Happy path: function stub returns `{ payload: { deposit } }` matching
+  `min(cap, ceiling)`; does not throw.
 - Two overlapping `liveSession(..., { env: { LIVE_PAY: "1" }, complete })`
   calls: the second throws in-flight. Use a hanging `complete` then resolve.
 
@@ -68,8 +74,9 @@ No live RPC in `npm test`. No hardcoded tx signatures as pass criteria.
 
 ## One throwaway proof (operator, after wrap tests)
 
-Only after Grok says the **function-opener** tests are the real path. Do not
-run this to paper over a missing wrap.
+Only after Grok says the **function-opener** tests are the real path. Then
+one operator window validates the wrap against the live SDK (not just the
+stub). Do not run this to paper over a missing wrap.
 
 1. New recipient ATA, `--url devnet`.
 2. One seller, `MPP_FIXTURE_OPERATOR=<payer>`.
