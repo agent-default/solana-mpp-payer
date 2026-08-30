@@ -27,12 +27,19 @@ until the tests below pass. Do not add Tempo/OpenRouter/x402. Do not use
    throws). Charge `maxAmount` stays the ceiling for `solana.charge` kwargs
    (unchanged).
 
-2. **Refuse if the built open does not match.** After
-   `createPaymentChannelSessionOpener` / `buildOpenPaymentChannelTransaction`,
-   parse or take `open.deposit` (string/bigint from the SDK result). If
-   `BigInt(open.deposit) !== seam.maxAmount`, throw
-   `deposit ${open.deposit} != seam ${seam.maxAmount}; refuse before sign`
-   **before** `fetchWithSession` retries. Do not broadcast a mismatch.
+2. **Refuse if the built open does not match.**
+   `createPaymentChannelSessionOpener` returns a **function**, not `{ deposit }`.
+   The live SDK shape is:
+
+   `async ({ challenge }) => { const open = await buildOpenPaymentChannelTransaction(…); return { payload: session.openPaymentChannelAction({ deposit: open.deposit, … }), session, source }; }`
+
+   A check of `opener?.deposit` never runs. Wrap the default opener: `await opener({ challenge })`, then refuse if
+   `BigInt(result.payload?.deposit ?? result.session?.deposit ?? "") !== seam.maxAmount`
+   **before** `fetchWithSession` retries. Throw
+   `deposit … != seam …; refuse before sign`. Do not broadcast a mismatch.
+
+   The `3bfbe0f` object stub `{ deposit: "20000" }` is **not** this type. It does
+   not cover the live SDK.
 
 3. **One in-process live session.** Module-level mutex: a second
    `liveSession`/`runSession` with `LIVE_PAY=1` while one is in flight throws
@@ -48,16 +55,21 @@ until the tests below pass. Do not add Tempo/OpenRouter/x402. Do not use
 - `assertPolicy` on a session with `cap=9000`, ceiling `10000` →
   `maxAmount === 9000n`. `cap=10000` → `10000n`. `cap=10001` still throws.
 - `sessionOpen` deposit equals that `maxAmount` for pull+`clientVoucher`.
-- `runSession` with a stub opener that returns `deposit: "20000"` against a
-  `10000` seam **throws** the mismatch error (do not call through to fetch).
+- `runSession` with an **async function** stub that returns
+  `{ payload: { deposit: "20000" } }` against a `10000` seam **throws** the
+  mismatch error (do not call through to fetch). An object `{ deposit }` stub
+  is not enough.
+- Happy path: function stub returns `{ payload: { deposit: "10000" } }`
+  (matching `min(cap, ceiling)`); `runSession` does not throw.
 - Two overlapping `liveSession(..., { env: { LIVE_PAY: "1" }, complete })`
   calls: the second throws in-flight. Use a hanging `complete` then resolve.
 
 No live RPC in `npm test`. No hardcoded tx signatures as pass criteria.
 
-## One throwaway proof (operator, after tests)
+## One throwaway proof (operator, after wrap tests)
 
-Only after Grok says the tests are the real path:
+Only after Grok says the **function-opener** tests are the real path. Do not
+run this to paper over a missing wrap.
 
 1. New recipient ATA, `--url devnet`.
 2. One seller, `MPP_FIXTURE_OPERATOR=<payer>`.
