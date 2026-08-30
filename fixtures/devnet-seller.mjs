@@ -33,14 +33,16 @@ const rpc = createSolanaRpc(RPC_URL);
 const operatorSigner = await generateKeyPairSigner();
 
 async function fundOperator(address) {
-  for (let attempt = 0; attempt <= 3; attempt++) {
+  console.log(`operator=${address}`);
+  for (let attempt = 0; attempt <= 12; attempt++) {
     const balance = (await rpc.getBalance(address).send()).value;
     if (balance >= MIN_OPERATOR_LAMPORTS) return balance;
-    if (attempt === 3) break;
-    try {
-      await rpc.requestAirdrop(address, AIRDROP_LAMPORTS).send();
-    } catch {
-      // devnet faucet rate limits are routine; re-check balance instead
+    if (attempt < 3) {
+      try {
+        await rpc.requestAirdrop(address, AIRDROP_LAMPORTS).send();
+      } catch {
+        // devnet faucet rate limits are routine; re-check balance instead
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 5000));
   }
