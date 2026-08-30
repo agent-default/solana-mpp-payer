@@ -1,4 +1,5 @@
-import { beforeSign } from "./policy.js";
+import { beforeSign, assertPolicy, challengeIdentity, sameChallenge } from "./policy.js";
+import { pickSolana } from "./lib.js";
 
 export function refuseFetchFacade(impl) {
   if (impl && typeof impl.fetch === "function") {
@@ -142,6 +143,26 @@ function wwwAuthenticate(response) {
 }
 
 /**
+ * Guard the paid round: the SDK re-fetches and may receive a different 402
+ * than the probe, and it only forwards expectedNetwork/maxAmount. Every
+ * subsequent 402 must re-pass full policy AND be the same challenge the probe
+ * seam approved. Refuse before charge/opener/sign otherwise.
+ */
+function paidFetchGuard(rawFetch, seam, policy) {
+  const probe = challengeIdentity(seam.hit);
+  return async (input, init) => {
+    const res = await rawFetch(input, init);
+    if (res?.status !== 402) return res;
+    const hit = pickSolana(wwwAuthenticate(res));
+    assertPolicy(hit, policy);
+    if (!sameChallenge(probe, challengeIdentity(hit))) {
+      throw new Error("paid challenge != probe seam; refuse before sign");
+    }
+    return res;
+  };
+}
+
+/**
  * Probe a seller, refuse before sign, then Mppx.fetch with the guarded method.
  * Not createPayKitClient().fetch(). Inject complete() in tests.
  */
@@ -156,7 +177,11 @@ export async function livePay(url, policy, ctx = {}) {
     return { ...out, status: await ctx.complete(url, out) };
   }
   const { Mppx } = await import("@solana/mpp/client");
-  const mppx = Mppx.create({ methods: [out.method], polyfill: false });
+  const mppx = Mppx.create({
+    methods: [out.method],
+    polyfill: false,
+    fetch: paidFetchGuard(rawFetch, out.seam, policy),
+  });
   if (typeof mppx.fetch !== "function") throw new Error("Mppx.fetch missing; refuse before sign");
   const paid = await mppx.fetch(url);
   return { ...out, status: paid.status };
@@ -210,7 +235,7 @@ async function liveSessionInner(url, policy, ctx) {
       ? ctx.sessionFetch
       : (await import("@solana/mpp/client")).createSessionFetch;
   if (typeof makeFetch !== "function") throw new Error("createSessionFetch missing; refuse before sign");
-  const client = makeFetch({ opener: wrappedOpener, fetch: rawFetch });
+  const client = makeFetch({ opener: wrappedOpener, fetch: paidFetchGuard(rawFetch, out.seam, policy) });
   if (typeof client.fetchWithSession !== "function") {
     throw new Error("SessionFetchClient.fetchWithSession missing; refuse before sign");
   }

@@ -67,3 +67,29 @@ export function beforeSign(headers, policy) {
   const hit = pickSolana(headers);
   return { hit, ...assertPolicy(hit, policy) };
 }
+
+/** Canonical identity of a challenge hit, for probe-vs-paid comparison. */
+export function challengeIdentity(hit) {
+  return {
+    intent: hit.intent,
+    recipient: hit.request.recipient,
+    mint: hit.request.currency,
+    network: challengeNetwork(hit),
+    amount: hit.amount, // charge amount or session cap, bigint
+    splits: hit.request.splits ?? hit.request.methodDetails?.splits ?? [],
+    pullVoucherStrategy: hit.request.pullVoucherStrategy ?? null,
+  };
+}
+
+/** True only when the paid challenge is the challenge the probe seam approved. */
+export function sameChallenge(probe, paid) {
+  return (
+    probe.intent === paid.intent &&
+    probe.recipient === paid.recipient &&
+    probe.mint === paid.mint &&
+    probe.network === paid.network &&
+    probe.amount === paid.amount &&
+    (paid.splits?.length ?? 0) === 0 &&
+    (paid.pullVoucherStrategy ?? null) === (probe.pullVoucherStrategy ?? null)
+  );
+}

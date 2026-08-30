@@ -9,8 +9,8 @@ import { beforeSign } from "./policy.js";
 import { chargeArgs, livePay, loadSolanaCharge, runCharge } from "./charge.js";
 
 const RECIPIENT = "11111111111111111111111111111111";
-function hdr() {
-  const request = { amount: "10000", currency: USDC_DEVNET, recipient: RECIPIENT, methodDetails: { network: "devnet" } };
+function hdr({ amount = "10000", currency = USDC_DEVNET, recipient = RECIPIENT, network = "devnet" } = {}) {
+  const request = { amount, currency, recipient, methodDetails: { network } };
   return `Payment id="a", realm="r", method="solana", intent="charge", request="${Buffer.from(JSON.stringify(request)).toString("base64url")}"`;
 }
 const policy = { network: "devnet", mint: USDC_DEVNET, recipient: RECIPIENT, ceiling: 10000n, allowMainnet: false };
@@ -90,6 +90,53 @@ test("livePay probes 402, refuses LIVE_PAY=0, and does not use pay-kit fetch", a
     }),
     /refuse createPayKitClient\(\)\.fetch/,
   );
+});
+
+test("livePay refuses a paid 402 that flips one field; the signer stays cold", async () => {
+  const url = "https://example.invalid/paid";
+  const { generateKeyPairSigner } = await import("@solana/kit");
+  const inner = await generateKeyPairSigner();
+  let signed = 0;
+  // Proxy: the SDK assigns onto the signer during method setup; absorb that
+  // and keep serving the counting spy.
+  const signer = new Proxy({}, {
+    get(_t, p) {
+      if (p === "signTransactions") {
+        return async (...a) => {
+          signed++;
+          return inner.signTransactions(...a);
+        };
+      }
+      return inner[p];
+    },
+    set(_t, _p, _v) { return true; },
+    has(_t, p) { return p in inner; },
+  });
+  for (const { paid, msg } of [
+    { paid: { recipient: "22222222222222222222222222222222" }, msg: /recipient mismatch/ },
+    { paid: { amount: "9000" }, msg: /paid challenge != probe seam/ },
+  ]) {
+    let calls = 0;
+    signed = 0;
+    const rawFetch = async () => {
+      calls++;
+      return new Response("payment_required", {
+        status: 402,
+        headers: { "WWW-Authenticate": calls === 1 ? hdr() : hdr(paid) },
+      });
+    };
+    await assert.rejects(
+      livePay(url, policy, {
+        env: { LIVE_PAY: "1" },
+        rpcUrl: "https://example.invalid",
+        signer,
+        rawFetch,
+      }),
+      msg,
+    );
+    assert.equal(signed, 0);
+    assert.equal(calls, 2);
+  }
 });
 
 test("runCharge receives the protocol signer loaded from the ignored file key", async () => {
