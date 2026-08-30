@@ -185,6 +185,23 @@ async function liveSessionInner(url, policy, ctx) {
   if (BigInt(out.open.deposit) !== out.seam.maxAmount) {
     throw new Error(`deposit ${out.open.deposit} != seam ${out.seam.maxAmount}; refuse before sign`);
   }
+  // Function openers carry the deposit only on the invocation result (SDK:
+  // { payload: { deposit }, session, source }). Wrap so the built payload is
+  // checked against the seam before it can be signed or broadcast.
+  const wrappedOpener =
+    typeof out.opener === "function"
+      ? async ({ challenge }) => {
+          const built = await out.opener({ challenge });
+          const raw = built?.payload?.deposit ?? built?.session?.deposit;
+          if (raw == null) {
+            throw new Error("opener result missing deposit; refuse before sign");
+          }
+          if (BigInt(raw) !== out.seam.maxAmount) {
+            throw new Error(`deposit ${raw} != seam ${out.seam.maxAmount}; refuse before sign`);
+          }
+          return built;
+        }
+      : out.opener;
   if (typeof ctx.complete === "function") {
     return { ...out, status: await ctx.complete(url, out) };
   }
@@ -193,7 +210,7 @@ async function liveSessionInner(url, policy, ctx) {
       ? ctx.sessionFetch
       : (await import("@solana/mpp/client")).createSessionFetch;
   if (typeof makeFetch !== "function") throw new Error("createSessionFetch missing; refuse before sign");
-  const client = makeFetch({ opener: out.opener, fetch: rawFetch });
+  const client = makeFetch({ opener: wrappedOpener, fetch: rawFetch });
   if (typeof client.fetchWithSession !== "function") {
     throw new Error("SessionFetchClient.fetchWithSession missing; refuse before sign");
   }

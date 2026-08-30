@@ -154,6 +154,64 @@ test("runSession refuses a stub opener whose built deposit misses the seam", asy
   );
 });
 
+test("liveSession refuses a function opener whose built payload deposit misses the seam", async () => {
+  const url = "https://example.invalid/session";
+  const rawFetch = async () =>
+    new Response("payment_required", { status: 402, headers: { "WWW-Authenticate": sessionHdr() } });
+  let reachedFetch = false;
+  await assert.rejects(
+    liveSession(url, policy, {
+      env: { LIVE_PAY: "1" }, rpcUrl: "x", signer: { pubkey: "x" }, rawFetch,
+      sessionOpener: () => async () => ({ payload: { deposit: "20000" }, session: {} }),
+      sessionFetch: (cfg) => ({
+        fetchWithSession: async () => {
+          await cfg.opener({ challenge: {} }); // SDK invokes the opener before sign
+          reachedFetch = true;
+          return new Response("ok", { status: 200 });
+        },
+      }),
+    }),
+    /deposit 20000 != seam 10000; refuse before sign/,
+  );
+  assert.equal(reachedFetch, false); // refused before the fetch could complete
+});
+
+test("liveSession accepts a function opener whose payload deposit matches the seam", async () => {
+  const url = "https://example.invalid/session";
+  const rawFetch = async () =>
+    new Response("payment_required", { status: 402, headers: { "WWW-Authenticate": sessionHdr() } });
+  const out = await liveSession(url, policy, {
+    env: { LIVE_PAY: "1" }, rpcUrl: "x", signer: { pubkey: "x" }, rawFetch,
+    sessionOpener: () => async () => ({ payload: { deposit: "10000" }, session: {} }),
+    sessionFetch: (cfg) => ({
+      fetchWithSession: async () => {
+        await cfg.opener({ challenge: {} });
+        return new Response("ok", { status: 200 });
+      },
+    }),
+  });
+  assert.equal(out.status, 200);
+});
+
+test("liveSession refuses a function opener whose result is missing a deposit", async () => {
+  const url = "https://example.invalid/session";
+  const rawFetch = async () =>
+    new Response("payment_required", { status: 402, headers: { "WWW-Authenticate": sessionHdr() } });
+  await assert.rejects(
+    liveSession(url, policy, {
+      env: { LIVE_PAY: "1" }, rpcUrl: "x", signer: { pubkey: "x" }, rawFetch,
+      sessionOpener: () => async () => ({ payload: { action: "open" }, session: {} }),
+      sessionFetch: (cfg) => ({
+        fetchWithSession: async () => {
+          await cfg.opener({ challenge: {} });
+          return new Response("ok", { status: 200 });
+        },
+      }),
+    }),
+    /opener result missing deposit; refuse before sign/,
+  );
+});
+
 test("two overlapping liveSession calls refuse; the in-flight one completes", async () => {
   const url = "https://example.invalid/session";
   const rawFetch = async () =>
