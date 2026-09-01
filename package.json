@@ -26,6 +26,6 @@
     "@solana/kit": "^6.10.0",
     "@solana/mpp": "^0.7.0",
     "@solana/pay-kit": "^0.9.0",
-    "mppx": "^0.9.0"
+    "mppx": "^0.9.1"
   }
 }
