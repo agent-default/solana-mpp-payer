@@ -9,7 +9,7 @@ already exists. Create that ATA before starting the seller; the primary MPP
 client charge intentionally does not create a recipient ATA.
 
 ```sh
-cd /home/twzrd/mpp
+cd ~/mpp
 FIXTURE_TMP=$(mktemp -d -p /tmp mpp-seller.XXXXXX)
 chmod 700 "$FIXTURE_TMP"
 solana-keygen new --no-bip39-passphrase --silent --outfile "$FIXTURE_TMP/recipient.json"
